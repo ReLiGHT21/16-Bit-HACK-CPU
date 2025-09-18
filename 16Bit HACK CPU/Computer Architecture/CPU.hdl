@@ -1,0 +1,76 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/05/CPU.hdl
+
+/**
+ * The Hack CPU (Central Processing unit), consisting of an ALU,
+ * two registers named A and D, and a program counter named PC.
+ * The CPU is designed to fetch and execute instructions written in
+ * the Hack machine language.
+ */
+
+CHIP CPU {
+    IN  inM[16],           // M value input (M = contents of RAM[A])
+        instruction[16],   // Instruction for execution
+        reset;             // Signals whether to re-start the current program
+
+    OUT outM[16],          // M value output
+        writeM,            // Write to M?
+        addressM[15],      // Address in data memory (of M)
+        pc[15];            // address of next instruction
+
+    PARTS:
+    // Determine if instruction is A-instruction (instruction[15] == 0)
+    Not(in=instruction[15], out=notOp);
+    Mux16(a=aluOut, b=instruction, sel=notOp, out=entryMuxOut);
+
+    // Load value into A register (either from instruction or ALU)
+    Or(a=notOp, b=instruction[5], out=intoA);
+    ARegister(in=entryMuxOut, load=intoA, out=A, out[0..14]=addressM);
+
+    // ALU input selection: if instruction[12] is 1, use inM; else use A
+    And(a=instruction[15], b=instruction[12], out=AMSwitch);
+    Mux16(a=A, b=inM, sel=AMSwitch, out=AM);
+
+    // D register load control
+    And(a=instruction[15], b=instruction[4], out=intoD);
+    DRegister(in=aluOut, load=intoD, out=D);
+
+    // ALU operation
+    ALU(
+        x=D,
+        y=AM,
+        out=aluOut,
+        out=outM,
+        zx=instruction[11],
+        nx=instruction[10],
+        zy=instruction[9],
+        ny=instruction[8],
+        f=instruction[7],
+        no=instruction[6],
+        zr=zrOut,
+        ng=ngOut
+    );
+
+    // Write to Memory if destination bit is set
+    And(a=instruction[15], b=instruction[3], out=writeM);
+
+    // Program counter logic for jumps
+    Not(in=ngOut, out=pos);
+    Not(in=zrOut, out=nzr);
+    And(a=instruction[15], b=instruction[0], out=jgt);
+    And(a=pos, b=nzr, out=posnzr);
+    And(a=jgt, b=posnzr, out=ld1);
+
+    And(a=instruction[15], b=instruction[1], out=jeq);
+    And(a=jeq, b=zrOut, out=ld2);
+
+    And(a=instruction[15], b=instruction[2], out=jlt);
+    And(a=jlt, b=ngOut, out=ld3);
+
+    Or(a=ld1, b=ld2, out=ldt);
+    Or(a=ld3, b=ldt, out=ld);
+
+    PC(in=A, load=ld, inc=true, reset=reset, out[0..14]=pc);
+}
